@@ -63,7 +63,7 @@ def pickup_images() -> None:
     """
     images_with_hash = store_images_hash()
     for _, orig_paths in track(images_with_hash.items()):
-        if len(orig_paths) > 2:
+        if len(orig_paths) > 1:
             dest_path = dest_folder + "/".join(orig_paths[0].split("/")[4:])
             dst_folder = os.path.dirname(dest_path)
             if not os.path.exists(dst_folder):
