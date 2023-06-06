@@ -69,17 +69,32 @@ def pickup_images(images_with_hash: Dict[str, List[str]]) -> None:
     """
     for _, original_paths in images_with_hash.items():
         if len(original_paths) > 1:
-            destination_path = dest_folder + "/".join(original_paths[0].split("/")[4:])
-            destination_folder = os.path.dirname(destination_path)
-            if not os.path.exists(destination_folder):
-                os.makedirs(destination_folder)
-            shutil.copy(original_paths[0], destination_path)
+            for original_path in original_paths:
+                destination_path = get_destination_path(original_path)
+                copy_file(original_path, destination_path)
         else:
-            destination_path = dest_folder + "/".join(original_paths[0].split("/")[4:])
-            destination_folder = os.path.dirname(destination_path)
-            if not os.path.exists(destination_folder):
-                os.makedirs(destination_folder)
-            shutil.copy(original_paths[0], destination_path)
+            original_path = original_paths[0]
+            destination_path = get_destination_path(original_path)
+            copy_file(original_path, destination_path)
+
+
+def get_destination_path(original_path: str) -> str:
+    """
+    Generate the destination path based on the original path and the destination folder.
+    """
+    relative_path = "/".join(original_path.split("/")[4:])
+    return os.path.join(dest_folder, relative_path)
+
+
+def copy_file(source_path: str, destination_path: str) -> None:
+    """
+    Copy the file from the source path to the destination path.
+    Create the destination folder if it doesn't exist.
+    """
+    destination_folder = os.path.dirname(destination_path)
+    if not os.path.exists(destination_folder):
+        os.makedirs(destination_folder)
+    shutil.copy(source_path, destination_path)
 
 
 if __name__ == "__main__":
