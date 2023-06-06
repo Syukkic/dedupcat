@@ -1,81 +1,88 @@
 import os
 import hashlib
 import shutil
+import asyncio
+import functools
 from typing import List, Dict
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 
-from rich.progress import track
 from config import source_folder, dest_folder, img_extensions
 
 
-def fetch_images_paths(rootdir: str) -> List[str]:
+def fetch_images_paths(root_directory: str) -> List[str]:
     """
-    iterate pictures folder and get images absolute path
+    Iterate through the pictures folder and retrieve the absolute paths of images.
     """
-
     images_paths = []
-    for subdir, _, files in track(os.walk(rootdir)):
-        for file in files:
-            _, file_ext = os.path.splitext(file)
+    for subdir, _, files in os.walk(root_directory):
+        for file_name in files:
+            _, file_ext = os.path.splitext(file_name)
             if file_ext in img_extensions:
-                images_paths.append(os.path.join(subdir, file))
-
+                images_paths.append(os.path.join(subdir, file_name))
     return images_paths
 
 
-def hash_file(filename: str) -> str:
+def calculate_hash_value(file_path: str) -> str:
     """
-    param: The path of pictures
-    return: Hash value of pictures
+    Calculate the hash value of the given picture.
     """
-
-    hash_value = hashlib.sha1()
-    with open(filename, "rb") as file:
+    hash_value = hashlib.sha256()
+    with open(file_path, "rb") as file:
         chunk = None
         while chunk != b"":
             chunk = file.read(1024)
             hash_value.update(chunk)
-
     return hash_value.hexdigest()
 
 
-def store_images_hash() -> Dict[str, List[str]]:
+async def store_hash_values(all_images: List[str]) -> Dict[str, List[str]]:
     """
-    Calculate pictures hash value and store into dict as key,
-    their absolute path as value in list
+    Calculate the hash values of pictures and store them in a dictionary as keys,
+    with their absolute paths as values in a list.
     """
+    images_container = defaultdict(list)
+    tasks = []
 
-    imgs_container = defaultdict(list)
-    all_images = fetch_images_paths(source_folder)
-    for img in track(all_images):
-        hash_value = hash_file(img)
-        imgs_container[hash_value].append(img)
+    loop = asyncio.get_event_loop()
+    tasks = []
+    with ProcessPoolExecutor() as pool:
+        for image_path in all_images:
+            tasks.append(
+                loop.run_in_executor(
+                    pool, functools.partial(calculate_hash_value, image_path)
+                )
+            )
+        hashed_results = await asyncio.gather(*tasks)
 
-    return imgs_container
+    for idx, image_path in enumerate(all_images):
+        images_container[hashed_results[idx]].append(image_path)
+
+    return images_container
 
 
-def pickup_images() -> None:
+def pickup_images(images_with_hash: Dict[str, List[str]]) -> None:
     """
-    Pick up unique-hash-value picture to the new folder,
-    and keep their original subdirectories.
-
-    Keep one picture if they are duplicated.
+    Move unique pictures with a unique hash value to the destination folder,
+    while maintaining their original subdirectories.
+    Keep only one picture if duplicates exist.
     """
-    images_with_hash = store_images_hash()
-    for _, orig_paths in track(images_with_hash.items()):
-        if len(orig_paths) > 1:
-            dest_path = dest_folder + "/".join(orig_paths[0].split("/")[4:])
-            dst_folder = os.path.dirname(dest_path)
-            if not os.path.exists(dst_folder):
-                os.makedirs(dst_folder)
-            shutil.copy(orig_paths[0], dest_path)
+    for _, original_paths in images_with_hash.items():
+        if len(original_paths) > 1:
+            destination_path = dest_folder + "/".join(original_paths[0].split("/")[4:])
+            destination_folder = os.path.dirname(destination_path)
+            if not os.path.exists(destination_folder):
+                os.makedirs(destination_folder)
+            shutil.copy(original_paths[0], destination_path)
         else:
-            dest_path = dest_folder + "/".join(orig_paths[0].split("/")[4:])
-            dst_folder = os.path.dirname(dest_path)
-            if not os.path.exists(dst_folder):
-                os.makedirs(dst_folder)
-            shutil.copy(orig_paths[0], dest_path)
+            destination_path = dest_folder + "/".join(original_paths[0].split("/")[4:])
+            destination_folder = os.path.dirname(destination_path)
+            if not os.path.exists(destination_folder):
+                os.makedirs(destination_folder)
+            shutil.copy(original_paths[0], destination_path)
 
 
 if __name__ == "__main__":
-    pickup_images()
+    all_images = fetch_images_paths(source_folder)
+    images_with_hash = asyncio.run(store_hash_values(all_images))
+    pickup_images(images_with_hash)
